@@ -1,14 +1,11 @@
 import pandas as pd
+from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import train_test_split
-
-# Function for comparing different approaches
-def score_dataset(X_train, X_valid, y_train, y_valid):
-    model = RandomForestRegressor(n_estimators=10, random_state=0)
-    model.fit(X_train, y_train)
-    preds = model.predict(X_valid)
-    return mean_absolute_error(y_valid, preds)
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 # Read the data
 data = pd.read_csv('./archive/melb_data.csv')
@@ -39,8 +36,40 @@ my_cols = low_cardinality_cols + numerical_cols
 X_train = X_train_full[my_cols].copy()
 X_valid = X_valid_full[my_cols].copy()
 
-drop_X_train = X_train.select_dtypes(exclude=['object'])
-drop_X_valid = X_valid.select_dtypes(exclude=['object'])
+# Get categorical columns
+s = (X_train.dtypes == 'object')
+categorical_cols = list(s[s].index)
 
-print("MAE from Approach 1 (Drop categorical variables):")
-print(score_dataset(drop_X_train, drop_X_valid, y_train, y_valid))
+# Preprocessing for numerical data
+numerical_transformer = SimpleImputer(strategy='constant')
+
+# Preprocessing for categorical data
+categorical_transformer = Pipeline(steps=[
+    ('imputer', SimpleImputer(strategy='most_frequent')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore'))
+])
+
+# Bundle preprocessing for numerical and categorical data
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numerical_transformer, numerical_cols),
+        ('cat', categorical_transformer, categorical_cols)
+    ])
+
+# Create Random Forest Regressor model
+model = RandomForestRegressor(n_estimators=100, random_state=0)
+
+# Bundle preprocessing and modeling code in a pipeline
+my_pipeline = Pipeline(steps=[('preprocessor', preprocessor),
+                              ('model', model)
+                             ])
+
+# Preprocessing of training data, fit model 
+my_pipeline.fit(X_train, y_train)
+
+# Preprocessing of validation data, get predictions
+preds = my_pipeline.predict(X_valid)
+
+# Evaluate the model
+score = mean_absolute_error(y_valid, preds)
+print('MAE:', score)
